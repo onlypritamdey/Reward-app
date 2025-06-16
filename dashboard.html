@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dashboard - Reward App</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-blue-50 min-h-screen p-4 flex flex-col">
+
+  <div class="text-center mb-6">
+    <h1 class="text-2xl font-bold text-blue-600">🎉 Dashboard</h1>
+    <p class="text-sm text-gray-700" id="userEmail"></p>
+  </div>
+
+  <div class="bg-white p-4 rounded-xl shadow-md mb-4 text-center">
+    <h2 class="text-lg font-semibold">💰 Your Coins</h2>
+    <p id="coinCount" class="text-3xl text-green-600 font-bold">0</p>
+  </div>
+
+  <div class="bg-white p-4 rounded-xl shadow-md mb-4">
+    <h3 class="font-semibold mb-2">✅ Daily Task</h3>
+    <button onclick="completeTask()" class="w-full bg-green-500 text-white py-2 rounded hover:bg-green-600">
+      Complete Task (+5 Coins)
+    </button>
+  </div>
+
+  <div class="bg-white p-4 rounded-xl shadow-md mt-auto">
+    <h3 class="font-semibold">🔗 Your Referral Code</h3>
+    <p id="referralCode" class="text-sm text-blue-600"></p>
+  </div>
+
+  <script type="module" src="firebase-config.js"></script>
+  <script type="module">
+    import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-auth.js";
+    import { ref, get, update } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-database.js";
+    import { auth, db } from './firebase-config.js';
+
+    let uid;
+
+    onAuthStateChanged(auth, async (user) => {
+      if (!user) {
+        window.location.href = 'login.html';
+        return;
+      }
+
+      uid = user.uid;
+      document.getElementById('userEmail').innerText = user.email;
+
+      const snap = await get(ref(db, 'users/' + uid));
+      const userData = snap.val();
+
+      document.getElementById('coinCount').innerText = userData.coins;
+      document.getElementById('referralCode').innerText = user.email.split('@')[0];
+    });
+
+    async function completeTask() {
+      const snap = await get(ref(db, 'users/' + uid));
+      const coins = snap.val().coins || 0;
+      await update(ref(db, 'users/' + uid), { coins: coins + 5 });
+      document.getElementById('coinCount').innerText = coins + 5;
+      alert("Task complete! +5 Coins");
+    }
+  </script>
+</body>
+</html>
