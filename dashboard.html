@@ -24,7 +24,6 @@
 
   <!-- Main Content -->
   <main class="flex-1 overflow-y-auto p-4 space-y-4">
-
     <!-- Welcome Box -->
     <section class="bg-white p-4 rounded-lg shadow">
       <p class="text-gray-600 text-sm">Welcome,</p>
@@ -37,10 +36,12 @@
       <p id="user-coins" class="text-3xl font-semibold text-green-600">0</p>
     </section>
 
-    <!-- Tasks -->
+    <!-- Task List -->
     <section class="bg-white p-4 rounded-lg shadow">
-      <h2 class="text-lg font-bold mb-2 text-gray-800">Today’s Task</h2>
-      <p class="text-gray-500 text-sm">Coming soon...</p>
+      <h2 class="text-lg font-bold mb-2 text-gray-800">Today's Tasks</h2>
+      <div id="task-list" class="space-y-2 text-sm text-gray-700">
+        <p>Loading tasks...</p>
+      </div>
     </section>
   </main>
 
@@ -52,49 +53,124 @@
     </div>
   </div>
 
-  <!-- Scripts -->
+  <!-- Firebase Config Script -->
   <script type="module" src="firebase-config.js"></script>
+
+  <!-- Main Script -->
   <script type="module">
     import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-auth.js";
-    import { ref, get } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-database.js";
+    import { ref, get, update, child } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-database.js";
     import { auth, db } from './firebase-config.js';
 
     const emailEl = document.getElementById("user-email");
     const coinsEl = document.getElementById("user-coins");
+    const taskList = document.getElementById("task-list");
+
+    let currentUid = null;
 
     onAuthStateChanged(auth, async (user) => {
       if (user) {
+        currentUid = user.uid;
         emailEl.textContent = user.email;
+
         try {
           const snapshot = await get(ref(db, 'users/' + user.uid));
           if (snapshot.exists()) {
             coinsEl.textContent = snapshot.val().coins || 0;
           }
-        } catch (error) {
-          showModal("Failed to load user data.");
+        } catch (err) {
+          showModal("Failed to load coins.");
         }
+
+        loadTasks(user.uid);
       } else {
         window.location.href = 'login.html';
       }
     });
 
+    async function loadTasks(uid) {
+      try {
+        const [allTasksSnap, userTasksSnap] = await Promise.all([
+          get(ref(db, 'tasks')),
+          get(ref(db, 'users/' + uid + '/tasks'))
+        ]);
+
+        if (!allTasksSnap.exists()) {
+          taskList.innerHTML = "<p>No tasks available.</p>";
+          return;
+        }
+
+        const allTasks = allTasksSnap.val();
+        const userTasks = userTasksSnap.exists() ? userTasksSnap.val() : {};
+
+        taskList.innerHTML = "";
+
+        for (const [taskId, task] of Object.entries(allTasks)) {
+          const isCompleted = userTasks[taskId]?.completed;
+
+          const div = document.createElement("div");
+          div.className = "flex justify-between items-center bg-gray-100 p-2 rounded";
+
+          div.innerHTML = `
+            <span>${task.title}</span>
+            <button 
+              class="text-white text-xs px-2 py-1 rounded ${isCompleted ? 'bg-gray-400' : 'bg-green-500 hover:bg-green-600'}"
+              ${isCompleted ? "disabled" : `onclick="completeTask('${uid}', '${taskId}', ${task.reward})"`}
+            >
+              ${isCompleted ? 'Completed' : 'Do Task'}
+            </button>
+          `;
+
+          taskList.appendChild(div);
+        }
+      } catch (err) {
+        showModal("Failed to load tasks.");
+      }
+    }
+
+    window.completeTask = async function (uid, taskId, reward) {
+      try {
+        // Mark task as completed
+        await update(ref(db, 'users/' + uid + '/tasks/' + taskId), {
+          completed: true,
+          timestamp: Date.now()
+        });
+
+        // Update coins
+        const userRef = ref(db, 'users/' + uid);
+        const userSnap = await get(userRef);
+        const currentCoins = userSnap.val().coins || 0;
+
+        await update(userRef, {
+          coins: currentCoins + reward
+        });
+
+        // Refresh UI
+        coinsEl.textContent = currentCoins + reward;
+        showModal(`Task completed! You earned ${reward} coins.`);
+        loadTasks(uid);
+      } catch (err) {
+        showModal("Error completing task.");
+      }
+    };
+
     window.logout = async function () {
       try {
         await signOut(auth);
         window.location.href = 'login.html';
-      } catch (error) {
-        showModal("Logout failed. Please try again.");
+      } catch (err) {
+        showModal("Logout failed.");
       }
-    }
+    };
 
     window.showModal = function (msg) {
       document.getElementById("modal-message").innerText = msg;
       document.getElementById("modal").classList.remove("hidden");
-    }
+    };
 
     window.closeModal = function () {
       document.getElementById("modal").classList.add("hidden");
-    }
+    };
   </script>
 </body>
 </html>
