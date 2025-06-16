@@ -30,8 +30,8 @@
 
   <script type="module" src="firebase-config.js"></script>
   <script type="module">
-    import { getAuth, createUserWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-auth.js";
-    import { getDatabase, ref, set, get, update } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-database.js";
+    import { createUserWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-auth.js";
+    import { ref, set, get, update } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-database.js";
     import { auth, db } from './firebase-config.js';
 
     window.signUp = async function () {
@@ -64,7 +64,15 @@
         showModal("Signup successful! Redirecting...");
         setTimeout(() => window.location.href = 'dashboard.html', 1500);
       } catch (err) {
-        showModal("Error: " + err.message);
+        if (err.code === 'auth/email-already-in-use') {
+          showModal("Email already in use.");
+        } else if (err.code === 'auth/invalid-email') {
+          showModal("Invalid email address.");
+        } else if (err.code === 'auth/weak-password') {
+          showModal("Password should be at least 6 characters.");
+        } else {
+          showModal("Something went wrong. Please try again.");
+        }
       }
     }
 
