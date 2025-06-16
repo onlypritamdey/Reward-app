@@ -20,33 +20,62 @@
     <p class="text-center text-sm">Already have an account? <a href="login.html" class="text-blue-600 underline">Login</a></p>
   </div>
 
+  <!-- Modal -->
+  <div id="modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden">
+    <div class="bg-white p-4 rounded-lg max-w-xs w-full text-center shadow">
+      <p id="modal-message" class="mb-4 text-gray-800"></p>
+      <button onclick="closeModal()" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">OK</button>
+    </div>
+  </div>
+
   <script type="module" src="firebase-config.js"></script>
   <script type="module">
-  import { getAuth, createUserWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-auth.js";
-  import { getDatabase, ref, set, get, update } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-database.js";
-  import { auth, db } from './firebase-config.js';
+    import { getAuth, createUserWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-auth.js";
+    import { getDatabase, ref, set, get, update } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-database.js";
+    import { auth, db } from './firebase-config.js';
 
-  window.signUp = async function () {
-    const email = document.getElementById('email').value;
-    const password = document.getElementById('password').value;
-    const referralCode = document.getElementById('referralCode').value;
+    window.signUp = async function () {
+      const email = document.getElementById('email').value;
+      const password = document.getElementById('password').value;
+      const referralCode = document.getElementById('referralCode').value;
 
-    try {
-      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-      const uid = userCredential.user.uid;
+      try {
+        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+        const uid = userCredential.user.uid;
 
-      await set(ref(db, 'users/' + uid), {
-        email,
-        coins: 0,
-        referredBy: referralCode || null
-      });
+        await set(ref(db, 'users/' + uid), {
+          email,
+          coins: 0,
+          referredBy: referralCode || null
+        });
 
-      alert('Signup successful!');
-      window.location.href = 'dashboard.html';
-    } catch (err) {
-      alert("Error: " + err.message);
+        if (referralCode) {
+          const snapshot = await get(ref(db, 'users'));
+          snapshot.forEach(childSnap => {
+            if (childSnap.val().email.includes(referralCode)) {
+              const refId = childSnap.key;
+              const refUser = childSnap.val();
+              const newCoins = (refUser.coins || 0) + 10;
+              update(ref(db, 'users/' + refId), { coins: newCoins });
+            }
+          });
+        }
+
+        showModal("Signup successful! Redirecting...");
+        setTimeout(() => window.location.href = 'dashboard.html', 1500);
+      } catch (err) {
+        showModal("Error: " + err.message);
+      }
     }
-  }
-</script>
+
+    window.showModal = function (msg) {
+      document.getElementById('modal-message').innerText = msg;
+      document.getElementById('modal').classList.remove('hidden');
+    }
+
+    window.closeModal = function () {
+      document.getElementById('modal').classList.add('hidden');
+    }
+  </script>
 </body>
 </html>
