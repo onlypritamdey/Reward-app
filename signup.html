@@ -22,45 +22,31 @@
 
   <script type="module" src="firebase-config.js"></script>
   <script type="module">
-    import { getAuth, createUserWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-auth.js";
-    import { getDatabase, ref, set, get, update } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-database.js";
-    import { auth, db } from './firebase-config.js';
+  import { getAuth, createUserWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-auth.js";
+  import { getDatabase, ref, set, get, update } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-database.js";
+  import { auth, db } from './firebase-config.js';
 
-    async function signUp() {
-      const email = document.getElementById('email').value;
-      const password = document.getElementById('password').value;
-      const referralCode = document.getElementById('referralCode').value;
+  window.signUp = async function () {
+    const email = document.getElementById('email').value;
+    const password = document.getElementById('password').value;
+    const referralCode = document.getElementById('referralCode').value;
 
-      try {
-        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-        const uid = userCredential.user.uid;
+    try {
+      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      const uid = userCredential.user.uid;
 
-        await set(ref(db, 'users/' + uid), {
-          email,
-          coins: 0,
-          referredBy: referralCode || null
-        });
+      await set(ref(db, 'users/' + uid), {
+        email,
+        coins: 0,
+        referredBy: referralCode || null
+      });
 
-        // Handle referral
-        if (referralCode) {
-          const snapshot = await get(ref(db, 'users'));
-          snapshot.forEach(childSnap => {
-            if (childSnap.val().email.includes(referralCode)) {
-              const refId = childSnap.key;
-              const refUser = childSnap.val();
-              const newCoins = (refUser.coins || 0) + 10;
-              update(ref(db, 'users/' + refId), { coins: newCoins });
-            }
-          });
-        }
-
-        alert('Account created!');
-        window.location.href = 'dashboard.html';
-
-      } catch (err) {
-        alert("Error: " + err.message);
-      }
+      alert('Signup successful!');
+      window.location.href = 'dashboard.html';
+    } catch (err) {
+      alert("Error: " + err.message);
     }
-  </script>
+  }
+</script>
 </body>
 </html>
