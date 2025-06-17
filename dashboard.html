@@ -1,171 +1,84 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>User Dashboard - RewardRush</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-</head>
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Dashboard – RewardRush</title><script src="https://cdn.tailwindcss.com"></script></head>
 <body class="bg-gray-100 min-h-screen">
   <div class="max-w-4xl mx-auto py-8 px-4">
     <div class="flex justify-between items-center mb-6">
       <h1 class="text-2xl font-bold text-blue-600">Reward Dashboard</h1>
-      <button onclick="logout()" class="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600">Logout</button>
+      <button onclick="logout()" class="bg-red-500 text-white px-4 py-2 rounded">Logout</button>
     </div>
-
     <div class="mb-4">
-      <p id="welcome" class="text-lg text-gray-700">Welcome back!</p>
-      <p id="balance" class="text-sm text-gray-600 mt-1"></p>
+      <p id="welcome">Welcome back!</p>
+      <p id="balance" class="text-sm text-gray-600"></p>
     </div>
-
     <div class="bg-white p-6 rounded shadow">
-      <h2 class="text-xl font-semibold text-gray-800 mb-4">Available Tasks</h2>
-      <div id="taskList" class="space-y-4">
-        <p class="text-gray-500">Loading tasks...</p>
-      </div>
-    </div>
-  </div>
-
-  <!-- Task Modal -->
-  <div id="taskModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
-    <div class="bg-white p-6 rounded-lg shadow max-w-sm w-full text-center space-y-4">
-      <h3 class="text-xl font-bold text-blue-600" id="modalTitle"></h3>
-      <p id="modalDesc" class="text-gray-700"></p>
-      <p class="text-sm text-gray-500">You must stay for <span id="modalDuration"></span> seconds</p>
-      <p class="text-red-600 font-semibold" id="countdownText"></p>
-      <button id="completeBtn" onclick="markComplete()" disabled class="bg-green-500 text-white px-4 py-2 rounded disabled:opacity-50 hover:bg-green-600">Mark as Complete</button>
-      <button onclick="closeModal()" class="text-sm text-gray-500">Cancel</button>
+      <h2 class="text-xl text-gray-800 mb-4">Available Tasks</h2>
+      <div id="taskList" class="space-y-4"><p class="text-gray-500">Loading tasks...</p></div>
     </div>
   </div>
 
   <script type="module">
     import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-auth.js";
-    import { ref, onValue, update, get } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-database.js";
+    import { ref, onValue, get } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-database.js";
     import { db } from './firebase-config.js';
 
     const auth = getAuth();
     const taskList = document.getElementById('taskList');
     const welcome = document.getElementById('welcome');
-    const balance = document.getElementById('balance');
-    const modal = document.getElementById('taskModal');
-    const modalTitle = document.getElementById('modalTitle');
-    const modalDesc = document.getElementById('modalDesc');
-    const modalDuration = document.getElementById('modalDuration');
-    const countdownText = document.getElementById('countdownText');
-    const completeBtn = document.getElementById('completeBtn');
+    const balanceEl = document.getElementById('balance');
 
-    let currentUser = null;
-    let currentTask = null;
-    let countdown = null;
+    onAuthStateChanged(auth, async (user) => {
+      if (!user) return window.location.href = 'login.html';
+      welcome.innerText = `Welcome, ${user.email}`;
+      console.log("🔐 Logged in user:", user.uid);
 
-    onAuthStateChanged(auth, (user) => {
-      if (user) {
-        currentUser = user;
-        welcome.innerText = `Welcome, ${user.email}`;
-        loadBalance();
-        loadTasks();
-      } else {
-        window.location.href = 'login.html';
-      }
+      // Test read permissions on /tasks
+      const test = await get(ref(db, 'tasks'));
+      console.log("📂 Tasks snapshot:", test.val());
+
+      loadBalance(user.uid);
+      loadTasks();
     });
 
-    function loadBalance() {
-      const userRef = ref(db, 'users/' + currentUser.uid);
-      onValue(userRef, (snap) => {
-        const coins = snap.val()?.coins || 0;
-        balance.innerText = `Coins: ${coins}`;
+    function loadBalance(uid) {
+      onValue(ref(db, 'users/' + uid), snap => {
+        console.log("👤 User snapshot:", snap.val());
+        balanceEl.innerText = `Coins: ${snap.val()?.coins || 0}`;
       });
     }
 
     function loadTasks() {
-      onValue(ref(db, 'tasks'), async (snapshot) => {
-        const userTasksSnap = await get(ref(db, `users/${currentUser.uid}/completedTasks`));
-        const completedTasks = userTasksSnap.val() || {};
+      onValue(ref(db, 'tasks'), (snapshot) => {
+        console.log("📋 Drawing tasks:", snapshot.exists());
         taskList.innerHTML = "";
-
         if (!snapshot.exists()) {
-          taskList.innerHTML = "<p class='text-gray-500'>No tasks available.</p>";
-          return;
+          return taskList.innerHTML = "<p class='text-gray-500'>No active tasks found.</p>";
         }
-
-        const now = new Date();
         snapshot.forEach(child => {
           const task = child.val();
           const id = child.key;
+          console.log("➡️ Task:", id, task);
 
-          if (!task.active || (task.validity && new Date(task.validity) < now)) return;
+          if (!task.active) return;
+
+          const now = new Date();
+          if (task.validity && new Date(task.validity) < now) return;
 
           const div = document.createElement('div');
           div.className = "p-4 border rounded bg-gray-50";
-
-          let alreadyDone = completedTasks[id];
-          let statusHTML = alreadyDone ? `<span class="text-green-600 text-sm font-semibold">✔ Completed</span>` : `<button onclick="startTask('${id}', ${task.duration || 30})" class="mt-2 bg-green-500 text-white px-4 py-1 rounded hover:bg-green-600">Start Task</button>`;
-
           div.innerHTML = `
-            <h3 class="text-lg font-semibold text-blue-700">${task.title}</h3>
-            <p class="text-gray-700">${task.description}</p>
-            <p class="text-sm text-gray-500">Reward: <strong>${task.reward}</strong> coins</p>
-            <p class="text-sm text-gray-500">Type: ${task.type} | Duration: ${task.duration}s</p>
-            <p class="text-sm text-gray-500">Valid Until: ${task.validity || "N/A"}</p>
-            ${statusHTML}
-          `;
+            <h3 class="text-lg font-semibold">${task.title}</h3>
+            <p>${task.description}</p>
+            <p class="text-sm text-gray-500">Reward: ${task.reward} • Duration: ${task.duration}s</p>
+            <button onclick="startTask('${id}', ${task.duration})" class="mt-2 bg-green-500 text-white px-4 py-1 rounded">Start Task</button>`;
           taskList.appendChild(div);
         });
-      });
+      }, error => console.error("❌ Error reading tasks:", error));
     }
 
-    window.logout = function () {
-      signOut(auth).then(() => window.location.href = 'login.html');
-    }
+    window.logout = () => signOut(auth).then(() => window.location.href = 'login.html');
+    window.startTask = (taskId, duration) => alert(`Start ${taskId} for ${duration}s`);
 
-    window.startTask = function (taskId, duration) {
-      get(ref(db, `tasks/${taskId}`)).then(snap => {
-        if (!snap.exists()) return alert("Task not found.");
-        currentTask = { id: taskId, data: snap.val(), duration };
-
-        modalTitle.innerText = snap.val().title;
-        modalDesc.innerText = snap.val().description;
-        modalDuration.innerText = duration;
-        countdownText.innerText = `Wait ${duration} seconds...`;
-        completeBtn.disabled = true;
-        modal.classList.remove('hidden');
-
-        let timeLeft = duration;
-        countdown = setInterval(() => {
-          timeLeft--;
-          countdownText.innerText = `Wait ${timeLeft} seconds...`;
-          if (timeLeft <= 0) {
-            clearInterval(countdown);
-            countdownText.innerText = "You can now mark this task as complete.";
-            completeBtn.disabled = false;
-          }
-        }, 1000);
-      });
-    }
-
-    window.markComplete = async function () {
-      if (!currentUser || !currentTask) return;
-
-      // Mark task completed in user data
-      await update(ref(db, `users/${currentUser.uid}/completedTasks/${currentTask.id}`), {
-        completedAt: Date.now()
-      });
-
-      // Update coins
-      const userRef = ref(db, `users/${currentUser.uid}`);
-      const userSnap = await get(userRef);
-      const currentCoins = userSnap.val()?.coins || 0;
-      const reward = parseInt(currentTask.data.reward || 0);
-      await update(userRef, { coins: currentCoins + reward });
-
-      closeModal();
-      loadTasks();
-    }
-
-    window.closeModal = function () {
-      clearInterval(countdown);
-      modal.classList.add('hidden');
-    }
   </script>
 </body>
 </html>
