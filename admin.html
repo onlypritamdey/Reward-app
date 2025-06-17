@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Admin Panel - Reward App</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 min-h-screen p-4">
+
+  <div class="max-w-xl mx-auto bg-white p-6 rounded-lg shadow-md mt-6">
+    <div class="flex justify-between items-center mb-4">
+      <h2 class="text-2xl font-bold text-blue-600">Admin Panel</h2>
+      <button onclick="logout()" class="bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600">Logout</button>
+    </div>
+
+    <h3 class="text-lg font-semibold mb-2">Add New Task</h3>
+
+    <input type="text" id="title" placeholder="Task Title" class="w-full mb-2 px-4 py-2 border rounded" />
+    <textarea id="description" placeholder="Task Description" class="w-full mb-2 px-4 py-2 border rounded"></textarea>
+    <input type="number" id="reward" placeholder="Reward (coins)" class="w-full mb-2 px-4 py-2 border rounded" />
+    <input type="date" id="date" class="w-full mb-4 px-4 py-2 border rounded" />
+
+    <button onclick="addTask()" class="w-full bg-blue-500 text-white py-2 rounded hover:bg-blue-600">Add Task</button>
+  </div>
+
+  <!-- Modal -->
+  <div id="modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden">
+    <div class="bg-white p-4 rounded-lg max-w-xs w-full text-center shadow">
+      <p id="modal-message" class="mb-4 text-gray-800"></p>
+      <button onclick="closeModal()" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">OK</button>
+    </div>
+  </div>
+
+  <script type="module" src="firebase-config.js"></script>
+  <script type="module">
+    import { auth, db } from './firebase-config.js';
+    import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-auth.js";
+    import { ref, push, set, get } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-database.js";
+
+    // Protect admin route
+    onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        const snapshot = await get(ref(db, 'users/' + user.uid));
+        const data = snapshot.val();
+        if (!data || data.type !== 'admin') {
+          window.location.href = 'dashboard.html'; // Not an admin
+        }
+      } else {
+        window.location.href = 'login.html'; // Not logged in
+      }
+    });
+
+    window.addTask = async function () {
+      const title = document.getElementById('title').value;
+      const description = document.getElementById('description').value;
+      const reward = document.getElementById('reward').value;
+      const date = document.getElementById('date').value;
+
+      if (!title || !description || !reward || !date) {
+        showModal("Please fill in all fields.");
+        return;
+      }
+
+      const taskRef = push(ref(db, 'tasks'));
+      await set(taskRef, {
+        title,
+        description,
+        reward: Number(reward),
+        date
+      });
+
+      showModal("Task added successfully!");
+
+      // Reset fields
+      document.getElementById('title').value = '';
+      document.getElementById('description').value = '';
+      document.getElementById('reward').value = '';
+      document.getElementById('date').value = '';
+    }
+
+    window.logout = function () {
+      signOut(auth).then(() => {
+        window.location.href = 'login.html';
+      });
+    }
+
+    window.showModal = function (msg) {
+      document.getElementById('modal-message').innerText = msg;
+      document.getElementById('modal').classList.remove('hidden');
+    }
+
+    window.closeModal = function () {
+      document.getElementById('modal').classList.add('hidden');
+    }
+  </script>
+</body>
+</html>
