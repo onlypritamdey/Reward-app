@@ -3,62 +3,89 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Dashboard - RewardRush</title>
+  <title>User Dashboard - RewardRush</title>
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-gray-100 min-h-screen">
-  <div class="max-w-4xl mx-auto py-8 px-4">
+  <div class="max-w-xl mx-auto py-8 px-4">
     <div class="flex justify-between items-center mb-6">
       <h1 class="text-2xl font-bold text-blue-600">User Dashboard</h1>
       <button onclick="logout()" class="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600">Logout</button>
     </div>
 
-    <div class="bg-white p-6 rounded shadow mb-6">
-      <h2 class="text-xl font-semibold text-gray-800">Your Info</h2>
-      <p class="text-gray-700 mt-2" id="userEmail">Email: Loading...</p>
-      <p class="text-gray-700" id="userCoins">Coins: Loading...</p>
+    <!-- User Info -->
+    <div class="bg-white p-4 rounded shadow mb-6">
+      <h2 class="text-lg font-semibold mb-2">Your Info</h2>
+      <p id="userEmail">Email: ...</p>
+      <p id="userCoins">Coins: ...</p>
     </div>
 
-    <div class="bg-white p-6 rounded shadow">
-      <h2 class="text-xl font-semibold text-gray-800 mb-4">Available Tasks</h2>
+    <!-- Task Section -->
+    <div class="bg-white p-4 rounded shadow mb-6">
+      <h2 class="text-lg font-semibold mb-4">Available Tasks</h2>
       <div id="taskList" class="space-y-4">
         <p class="text-gray-500">Loading tasks...</p>
       </div>
     </div>
+
+    <!-- Task Modal -->
+    <div id="taskModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden">
+      <div class="bg-white p-6 rounded shadow-lg w-11/12 max-w-md">
+        <h2 class="text-xl font-semibold mb-2" id="modalTitle"></h2>
+        <p id="modalDesc" class="mb-2"></p>
+        <p><strong>Duration:</strong> <span id="modalDuration"></span> seconds</p>
+        <p><strong>Reward:</strong> <span id="modalReward"></span> coins</p>
+        <p class="mt-2 text-sm text-gray-500">Click start to begin countdown.</p>
+        <div id="countdown" class="my-4 text-center text-2xl font-bold text-blue-600"></div>
+        <div class="flex justify-end space-x-2">
+          <button onclick="closeModal()" class="bg-gray-300 px-4 py-2 rounded">Cancel</button>
+          <button id="startBtn" onclick="startTask()" class="bg-blue-500 text-white px-4 py-2 rounded">Start</button>
+        </div>
+      </div>
+    </div>
   </div>
 
-  <!-- Firebase -->
+  <!-- Firebase Script -->
   <script type="module">
-    import { ref, onValue, get } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-database.js";
+    import { ref, onValue, set, get, update } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-database.js";
     import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-auth.js";
     import { db } from './firebase-config.js';
 
     const auth = getAuth();
+    let currentUser, userData, selectedTask = null;
+
+    const userEmailEl = document.getElementById("userEmail");
+    const userCoinsEl = document.getElementById("userCoins");
+    const taskListEl = document.getElementById("taskList");
 
     onAuthStateChanged(auth, async (user) => {
-      if (user) {
-        document.getElementById('userEmail').textContent = `Email: ${user.email}`;
-        const userRef = ref(db, 'users/' + user.uid);
-        const snapshot = await get(userRef);
+      if (!user) return location.href = 'login.html';
+      currentUser = user;
+      userEmailEl.textContent = "Email: " + user.email;
 
-        if (snapshot.exists()) {
-          const data = snapshot.val();
-          document.getElementById('userCoins').textContent = `Coins: ${data.coins || 0}`;
-        }
-
+      const userRef = ref(db, 'users/' + user.uid);
+      const userSnap = await get(userRef);
+      if (userSnap.exists()) {
+        userData = userSnap.val();
+        userCoinsEl.textContent = "Coins: " + (userData.coins || 0);
         loadTasks();
       } else {
-        window.location.href = 'login.html';
+        await set(userRef, { email: user.email, coins: 0 });
+        userData = { coins: 0 };
+        userCoinsEl.textContent = "Coins: 0";
+        loadTasks();
       }
     });
 
-    window.loadTasks = function () {
-      const taskList = document.getElementById('taskList');
-      taskList.innerHTML = "";
+    function logout() {
+      signOut(auth).then(() => location.href = 'login.html');
+    }
 
+    function loadTasks() {
       onValue(ref(db, 'tasks'), (snapshot) => {
+        taskListEl.innerHTML = "";
         if (!snapshot.exists()) {
-          taskList.innerHTML = "<p class='text-gray-500'>No tasks available.</p>";
+          taskListEl.innerHTML = "<p class='text-gray-500'>No tasks found.</p>";
           return;
         }
 
@@ -68,24 +95,75 @@
 
           if (!task.active) return;
 
-          const div = document.createElement("div");
-          div.className = "p-4 border rounded shadow-sm bg-gray-50";
+          const userTasks = userData.completedTasks || {};
+          if (userTasks[id]) return; // Skip if completed
 
+          const div = document.createElement("div");
+          div.className = "p-4 bg-gray-50 rounded border hover:shadow cursor-pointer";
           div.innerHTML = `
-            <h3 class="font-semibold text-lg text-blue-700">${task.title}</h3>
-            <p class="text-gray-600">${task.description}</p>
+            <h3 class="font-semibold text-blue-700">${task.title}</h3>
+            <p>${task.description}</p>
             <p class="text-sm text-gray-500">Reward: <strong>${task.reward}</strong> coins</p>
             <p class="text-sm text-gray-500">Type: ${task.type} | Duration: ${task.duration}s</p>
             <p class="text-sm text-gray-500">Valid Until: ${task.validity}</p>
-            <p class="text-sm text-green-600 font-medium">Status: Active</p>
+            <p class="text-sm text-green-600">Status: Active</p>
           `;
-          taskList.appendChild(div);
+          div.onclick = () => openModal(task, id);
+          taskListEl.appendChild(div);
         });
       });
     }
 
-    window.logout = function () {
-      signOut(auth).then(() => window.location.href = 'login.html');
+    // Modal Logic
+    function openModal(task, taskId) {
+      selectedTask = { ...task, id: taskId };
+      document.getElementById("modalTitle").textContent = task.title;
+      document.getElementById("modalDesc").textContent = task.description;
+      document.getElementById("modalDuration").textContent = task.duration;
+      document.getElementById("modalReward").textContent = task.reward;
+      document.getElementById("countdown").textContent = "";
+      document.getElementById("taskModal").classList.remove("hidden");
+    }
+
+    function closeModal() {
+      selectedTask = null;
+      document.getElementById("taskModal").classList.add("hidden");
+    }
+
+    function startTask() {
+      if (!selectedTask) return;
+
+      let remaining = selectedTask.duration;
+      const countdownEl = document.getElementById("countdown");
+      const interval = setInterval(() => {
+        countdownEl.textContent = remaining + "s remaining";
+        if (--remaining < 0) {
+          clearInterval(interval);
+          completeTask();
+        }
+      }, 1000);
+
+      document.getElementById("startBtn").disabled = true;
+    }
+
+    async function completeTask() {
+      closeModal();
+      const userRef = ref(db, 'users/' + currentUser.uid);
+      const completed = userData.completedTasks || {};
+      completed[selectedTask.id] = true;
+
+      const newCoins = (userData.coins || 0) + selectedTask.reward;
+      await update(userRef, {
+        coins: newCoins,
+        completedTasks: completed
+      });
+
+      await update(ref(db, 'tasks/' + selectedTask.id), {
+        counter: (selectedTask.counter || 0) + 1
+      });
+
+      alert(`Task Completed! You earned ${selectedTask.reward} coins.`);
+      location.reload();
     }
   </script>
 </body>
