@@ -2,175 +2,170 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Dashboard - Reward App</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>User Dashboard - RewardRush</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <style>
-    html, body {
-      margin: 0;
-      padding: 0;
-      height: 100%;
-      overflow: hidden;
-    }
-  </style>
 </head>
-<body class="bg-gray-100 h-screen flex flex-col">
+<body class="bg-gray-100 min-h-screen">
+  <div class="max-w-4xl mx-auto py-8 px-4">
+    <div class="flex justify-between items-center mb-6">
+      <h1 class="text-2xl font-bold text-blue-600">Reward Dashboard</h1>
+      <button onclick="logout()" class="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600">Logout</button>
+    </div>
 
-  <!-- Header -->
-  <header class="flex items-center justify-between p-4 bg-blue-600 text-white shadow">
-    <h1 class="text-xl font-bold">Reward Dashboard</h1>
-    <button onclick="logout()" class="bg-white text-blue-600 px-3 py-1 text-sm rounded hover:bg-gray-100">Logout</button>
-  </header>
+    <div class="mb-4">
+      <p id="welcome" class="text-lg text-gray-700">Welcome back!</p>
+      <p id="balance" class="text-sm text-gray-600 mt-1"></p>
+    </div>
 
-  <!-- Main Content -->
-  <main class="flex-1 overflow-y-auto p-4 space-y-4">
-    <!-- Welcome Box -->
-    <section class="bg-white p-4 rounded-lg shadow">
-      <p class="text-gray-600 text-sm">Welcome,</p>
-      <p id="user-email" class="font-semibold text-blue-700 text-lg">Loading...</p>
-    </section>
-
-    <!-- Coins Box -->
-    <section class="bg-white p-4 rounded-lg shadow">
-      <h2 class="text-lg font-bold mb-1 text-gray-800">Your Coins</h2>
-      <p id="user-coins" class="text-3xl font-semibold text-green-600">0</p>
-    </section>
-
-    <!-- Task List -->
-    <section class="bg-white p-4 rounded-lg shadow">
-      <h2 class="text-lg font-bold mb-2 text-gray-800">Today's Tasks</h2>
-      <div id="task-list" class="space-y-2 text-sm text-gray-700">
-        <p>Loading tasks...</p>
+    <div class="bg-white p-6 rounded shadow">
+      <h2 class="text-xl font-semibold text-gray-800 mb-4">Available Tasks</h2>
+      <div id="taskList" class="space-y-4">
+        <p class="text-gray-500">Loading tasks...</p>
       </div>
-    </section>
-  </main>
-
-  <!-- Modal -->
-  <div id="modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50">
-    <div class="bg-white p-4 rounded-lg w-80 text-center shadow-lg">
-      <p id="modal-message" class="mb-4 text-gray-800 text-sm"></p>
-      <button onclick="closeModal()" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 text-sm">OK</button>
     </div>
   </div>
 
-  <!-- Firebase Config Script -->
-  <script type="module" src="firebase-config.js"></script>
+  <!-- Task Modal -->
+  <div id="taskModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
+    <div class="bg-white p-6 rounded-lg shadow max-w-sm w-full text-center space-y-4">
+      <h3 class="text-xl font-bold text-blue-600" id="modalTitle"></h3>
+      <p id="modalDesc" class="text-gray-700"></p>
+      <p class="text-sm text-gray-500">You must stay for <span id="modalDuration"></span> seconds</p>
+      <p class="text-red-600 font-semibold" id="countdownText"></p>
+      <button id="completeBtn" onclick="markComplete()" disabled class="bg-green-500 text-white px-4 py-2 rounded disabled:opacity-50 hover:bg-green-600">Mark as Complete</button>
+      <button onclick="closeModal()" class="text-sm text-gray-500">Cancel</button>
+    </div>
+  </div>
 
-  <!-- Main Script -->
   <script type="module">
-    import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-auth.js";
-    import { ref, get, update, child } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-database.js";
-    import { auth, db } from './firebase-config.js';
+    import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-auth.js";
+    import { ref, onValue, update, get } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-database.js";
+    import { db } from './firebase-config.js';
 
-    const emailEl = document.getElementById("user-email");
-    const coinsEl = document.getElementById("user-coins");
-    const taskList = document.getElementById("task-list");
+    const auth = getAuth();
+    const taskList = document.getElementById('taskList');
+    const welcome = document.getElementById('welcome');
+    const balance = document.getElementById('balance');
+    const modal = document.getElementById('taskModal');
+    const modalTitle = document.getElementById('modalTitle');
+    const modalDesc = document.getElementById('modalDesc');
+    const modalDuration = document.getElementById('modalDuration');
+    const countdownText = document.getElementById('countdownText');
+    const completeBtn = document.getElementById('completeBtn');
 
-    let currentUid = null;
+    let currentUser = null;
+    let currentTask = null;
+    let countdown = null;
 
-    onAuthStateChanged(auth, async (user) => {
+    onAuthStateChanged(auth, (user) => {
       if (user) {
-        currentUid = user.uid;
-        emailEl.textContent = user.email;
-
-        try {
-          const snapshot = await get(ref(db, 'users/' + user.uid));
-          if (snapshot.exists()) {
-            coinsEl.textContent = snapshot.val().coins || 0;
-          }
-        } catch (err) {
-          showModal("Failed to load coins.");
-        }
-
-        loadTasks(user.uid);
+        currentUser = user;
+        welcome.innerText = `Welcome, ${user.email}`;
+        loadBalance();
+        loadTasks();
       } else {
         window.location.href = 'login.html';
       }
     });
 
-    async function loadTasks(uid) {
-      try {
-        const [allTasksSnap, userTasksSnap] = await Promise.all([
-          get(ref(db, 'tasks')),
-          get(ref(db, 'users/' + uid + '/tasks'))
-        ]);
+    function loadBalance() {
+      const userRef = ref(db, 'users/' + currentUser.uid);
+      onValue(userRef, (snap) => {
+        const coins = snap.val()?.coins || 0;
+        balance.innerText = `Coins: ${coins}`;
+      });
+    }
 
-        if (!allTasksSnap.exists()) {
-          taskList.innerHTML = "<p>No tasks available.</p>";
+    function loadTasks() {
+      onValue(ref(db, 'tasks'), async (snapshot) => {
+        const userTasksSnap = await get(ref(db, `users/${currentUser.uid}/completedTasks`));
+        const completedTasks = userTasksSnap.val() || {};
+        taskList.innerHTML = "";
+
+        if (!snapshot.exists()) {
+          taskList.innerHTML = "<p class='text-gray-500'>No tasks available.</p>";
           return;
         }
 
-        const allTasks = allTasksSnap.val();
-        const userTasks = userTasksSnap.exists() ? userTasksSnap.val() : {};
+        const now = new Date();
+        snapshot.forEach(child => {
+          const task = child.val();
+          const id = child.key;
 
-        taskList.innerHTML = "";
+          if (!task.active || (task.validity && new Date(task.validity) < now)) return;
 
-        for (const [taskId, task] of Object.entries(allTasks)) {
-          const isCompleted = userTasks[taskId]?.completed;
+          const div = document.createElement('div');
+          div.className = "p-4 border rounded bg-gray-50";
 
-          const div = document.createElement("div");
-          div.className = "flex justify-between items-center bg-gray-100 p-2 rounded";
+          let alreadyDone = completedTasks[id];
+          let statusHTML = alreadyDone ? `<span class="text-green-600 text-sm font-semibold">✔ Completed</span>` : `<button onclick="startTask('${id}', ${task.duration || 30})" class="mt-2 bg-green-500 text-white px-4 py-1 rounded hover:bg-green-600">Start Task</button>`;
 
           div.innerHTML = `
-            <span>${task.title}</span>
-            <button 
-              class="text-white text-xs px-2 py-1 rounded ${isCompleted ? 'bg-gray-400' : 'bg-green-500 hover:bg-green-600'}"
-              ${isCompleted ? "disabled" : `onclick="completeTask('${uid}', '${taskId}', ${task.reward})"`}
-            >
-              ${isCompleted ? 'Completed' : 'Do Task'}
-            </button>
+            <h3 class="text-lg font-semibold text-blue-700">${task.title}</h3>
+            <p class="text-gray-700">${task.description}</p>
+            <p class="text-sm text-gray-500">Reward: <strong>${task.reward}</strong> coins</p>
+            <p class="text-sm text-gray-500">Type: ${task.type} | Duration: ${task.duration}s</p>
+            <p class="text-sm text-gray-500">Valid Until: ${task.validity || "N/A"}</p>
+            ${statusHTML}
           `;
-
           taskList.appendChild(div);
-        }
-      } catch (err) {
-        showModal("Failed to load tasks.");
-      }
+        });
+      });
     }
 
-    window.completeTask = async function (uid, taskId, reward) {
-      try {
-        // Mark task as completed
-        await update(ref(db, 'users/' + uid + '/tasks/' + taskId), {
-          completed: true,
-          timestamp: Date.now()
-        });
+    window.logout = function () {
+      signOut(auth).then(() => window.location.href = 'login.html');
+    }
 
-        // Update coins
-        const userRef = ref(db, 'users/' + uid);
-        const userSnap = await get(userRef);
-        const currentCoins = userSnap.val().coins || 0;
+    window.startTask = function (taskId, duration) {
+      get(ref(db, `tasks/${taskId}`)).then(snap => {
+        if (!snap.exists()) return alert("Task not found.");
+        currentTask = { id: taskId, data: snap.val(), duration };
 
-        await update(userRef, {
-          coins: currentCoins + reward
-        });
+        modalTitle.innerText = snap.val().title;
+        modalDesc.innerText = snap.val().description;
+        modalDuration.innerText = duration;
+        countdownText.innerText = `Wait ${duration} seconds...`;
+        completeBtn.disabled = true;
+        modal.classList.remove('hidden');
 
-        // Refresh UI
-        coinsEl.textContent = currentCoins + reward;
-        showModal(`Task completed! You earned ${reward} coins.`);
-        loadTasks(uid);
-      } catch (err) {
-        showModal("Error completing task.");
-      }
-    };
+        let timeLeft = duration;
+        countdown = setInterval(() => {
+          timeLeft--;
+          countdownText.innerText = `Wait ${timeLeft} seconds...`;
+          if (timeLeft <= 0) {
+            clearInterval(countdown);
+            countdownText.innerText = "You can now mark this task as complete.";
+            completeBtn.disabled = false;
+          }
+        }, 1000);
+      });
+    }
 
-    window.logout = async function () {
-      try {
-        await signOut(auth);
-        window.location.href = 'login.html';
-      } catch (err) {
-        showModal("Logout failed.");
-      }
-    };
+    window.markComplete = async function () {
+      if (!currentUser || !currentTask) return;
 
-    window.showModal = function (msg) {
-      document.getElementById("modal-message").innerText = msg;
-      document.getElementById("modal").classList.remove("hidden");
-    };
+      // Mark task completed in user data
+      await update(ref(db, `users/${currentUser.uid}/completedTasks/${currentTask.id}`), {
+        completedAt: Date.now()
+      });
+
+      // Update coins
+      const userRef = ref(db, `users/${currentUser.uid}`);
+      const userSnap = await get(userRef);
+      const currentCoins = userSnap.val()?.coins || 0;
+      const reward = parseInt(currentTask.data.reward || 0);
+      await update(userRef, { coins: currentCoins + reward });
+
+      closeModal();
+      loadTasks();
+    }
 
     window.closeModal = function () {
-      document.getElementById("modal").classList.add("hidden");
-    };
+      clearInterval(countdown);
+      modal.classList.add('hidden');
+    }
   </script>
 </body>
 </html>
