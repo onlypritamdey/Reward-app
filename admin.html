@@ -1,55 +1,89 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
+  <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Admin Panel – RewardRush</title>
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-gray-100 min-h-screen flex items-center justify-center px-4">
+<body class="bg-gray-100 min-h-screen p-4">
 
-  <div class="w-full max-w-md p-6 bg-white rounded-xl shadow-md space-y-6">
-    <h2 class="text-2xl font-bold text-center text-blue-600">Admin – Add Task</h2>
+  <div class="max-w-xl mx-auto space-y-6">
 
-    <div class="space-y-2">
-      <input id="taskTitle" type="text" placeholder="Task Title" class="w-full border px-3 py-2 rounded" />
-      
+    <h2 class="text-3xl font-bold text-center text-blue-600">Admin Panel</h2>
+
+    <!-- Add Task Section -->
+    <div class="bg-white rounded-xl shadow-md p-4 space-y-3">
+      <h3 class="text-xl font-semibold text-gray-700">Add New Task</h3>
+
+      <input id="taskTitle" type="text" placeholder="Task Title" class="w-full border px-3 py-2 rounded"/>
       <textarea id="taskDesc" placeholder="Task Description" class="w-full border px-3 py-2 rounded"></textarea>
-      
-      <input id="taskURL" type="text" placeholder="Target URL (e.g. video, profile)" class="w-full border px-3 py-2 rounded" />
-      
-      <input id="taskReward" type="number" placeholder="Reward Coins" class="w-full border px-3 py-2 rounded" />
-      
-      <input id="taskDuration" type="number" placeholder="Required Duration (in seconds)" class="w-full border px-3 py-2 rounded" />
-      
+      <input id="taskURL" type="text" placeholder="Target URL" class="w-full border px-3 py-2 rounded"/>
+      <input id="taskReward" type="number" placeholder="Reward Coins" class="w-full border px-3 py-2 rounded"/>
+      <input id="taskDuration" type="number" placeholder="Required Duration (sec)" class="w-full border px-3 py-2 rounded"/>
+
       <select id="taskType" class="w-full border px-3 py-2 rounded">
         <option value="watch">Watch Video</option>
         <option value="follow">Follow Social Media</option>
-        <option value="subscribe">Subscribe to Channel</option>
+        <option value="subscribe">Subscribe Channel</option>
         <option value="install">Install & Signup</option>
         <option value="visit">Visit Website</option>
       </select>
-      
-      <input id="taskValidity" type="date" class="w-full border px-3 py-2 rounded" />
-      
-      <button onclick="addTask()" class="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700">Add Task</button>
+
+      <input id="taskValidity" type="date" class="w-full border px-3 py-2 rounded"/>
+
+      <button onclick="addTask()" class="bg-blue-600 text-white py-2 rounded w-full hover:bg-blue-700">Add Task</button>
     </div>
 
-    <!-- Success Modal -->
-    <div id="modal" class="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center hidden">
+    <!-- Task List -->
+    <div class="bg-white rounded-xl shadow-md p-4">
+      <h3 class="text-xl font-semibold text-gray-700 mb-3">Existing Tasks</h3>
+      <div id="taskList" class="space-y-3 text-sm text-gray-800">
+        <p>Loading tasks...</p>
+      </div>
+    </div>
+
+    <!-- Modal -->
+    <div id="modal" class="fixed inset-0 bg-black bg-opacity-40 hidden items-center justify-center">
       <div class="bg-white p-4 rounded shadow text-center max-w-xs w-full">
-        <p id="modal-message" class="text-gray-800 mb-4">Task added successfully!</p>
+        <p id="modal-message" class="text-gray-800 mb-4">Message</p>
         <button onclick="closeModal()" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">OK</button>
       </div>
     </div>
   </div>
 
-  <!-- Firebase and Logic -->
   <script type="module" src="firebase-config.js"></script>
   <script type="module">
-    import { ref, push, set } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-database.js";
-    import { db } from './firebase-config.js';
+    import {
+      ref, push, set, onValue, update, remove
+    } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-database.js";
+    import {
+      onAuthStateChanged
+    } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-auth.js";
+    import { db, auth } from './firebase-config.js';
 
+    const taskList = document.getElementById('taskList');
+
+    // ✅ Check admin access
+    onAuthStateChanged(auth, async (user) => {
+      if (!user) {
+        alert("Not logged in. Redirecting...");
+        window.location.href = 'login.html';
+        return;
+      }
+
+      const userRef = ref(db, 'users/' + user.uid);
+      onValue(userRef, (snap) => {
+        if (snap.exists() && snap.val().type === 'admin') {
+          loadTasks();
+        } else {
+          alert("Unauthorized access.");
+          window.location.href = 'dashboard.html';
+        }
+      });
+    });
+
+    // ✅ Add task
     window.addTask = async function () {
       const title = document.getElementById('taskTitle').value.trim();
       const description = document.getElementById('taskDesc').value.trim();
@@ -66,39 +100,76 @@
 
       const taskRef = push(ref(db, 'tasks'));
       await set(taskRef, {
-        title,
-        description,
-        url,
-        reward,
-        duration,
-        type,
-        active: true,
-        validity,
+        title, description, url, reward, duration, type,
+        active: true, validity,
         completedCount: 0,
         createdAt: new Date().toISOString()
       });
 
       showModal("✅ Task added successfully!");
       clearForm();
-    }
+    };
 
     function clearForm() {
-      document.getElementById('taskTitle').value = "";
-      document.getElementById('taskDesc').value = "";
-      document.getElementById('taskURL').value = "";
-      document.getElementById('taskReward').value = "";
-      document.getElementById('taskDuration').value = "";
+      ['taskTitle', 'taskDesc', 'taskURL', 'taskReward', 'taskDuration', 'taskValidity'].forEach(id => {
+        document.getElementById(id).value = "";
+      });
       document.getElementById('taskType').value = "watch";
-      document.getElementById('taskValidity').value = "";
     }
 
     window.showModal = function (msg) {
       document.getElementById('modal-message').innerText = msg;
       document.getElementById('modal').classList.remove('hidden');
+      document.getElementById('modal').classList.add('flex');
     }
 
     window.closeModal = function () {
       document.getElementById('modal').classList.add('hidden');
+    }
+
+    // ✅ Load tasks
+    function loadTasks() {
+      onValue(ref(db, 'tasks'), (snapshot) => {
+        taskList.innerHTML = "";
+
+        if (!snapshot.exists()) {
+          taskList.innerHTML = "<p>No tasks found.</p>";
+          return;
+        }
+
+        snapshot.forEach(child => {
+          const task = child.val();
+          const id = child.key;
+
+          const taskItem = document.createElement('div');
+          taskItem.className = "border p-3 rounded bg-gray-50";
+          taskItem.innerHTML = `
+            <div class="font-semibold">${task.title}</div>
+            <div class="text-xs text-gray-600">${task.type.toUpperCase()} • ${task.reward} coins • ${task.duration}s</div>
+            <div class="text-xs mt-1">${task.description}</div>
+            <div class="flex justify-between items-center mt-2">
+              <button onclick="toggleTask('${id}', ${task.active})" class="text-sm px-2 py-1 rounded ${task.active ? 'bg-green-500' : 'bg-red-500'} text-white">
+                ${task.active ? 'Active' : 'Inactive'}
+              </button>
+              <button onclick="deleteTask('${id}')" class="bg-gray-300 hover:bg-gray-400 text-sm px-2 py-1 rounded text-black">Delete</button>
+            </div>
+          `;
+          taskList.appendChild(taskItem);
+        });
+      });
+    }
+
+    // ✅ Toggle active/inactive
+    window.toggleTask = async function (taskId, currentState) {
+      await update(ref(db, 'tasks/' + taskId), { active: !currentState });
+    }
+
+    // ✅ Delete task
+    window.deleteTask = async function (taskId) {
+      const confirmDelete = confirm("Are you sure you want to delete this task?");
+      if (confirmDelete) {
+        await remove(ref(db, 'tasks/' + taskId));
+      }
     }
   </script>
 </body>
