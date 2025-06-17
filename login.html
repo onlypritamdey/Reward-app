@@ -30,16 +30,36 @@
   <script type="module" src="firebase-config.js"></script>
   <script type="module">
     import { signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-auth.js";
-    import { auth } from './firebase-config.js';
+    import { ref, get } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-database.js";
+    import { auth, db } from './firebase-config.js';
 
     window.login = async function () {
       const email = document.getElementById('email').value;
       const password = document.getElementById('password').value;
 
       try {
-        await signInWithEmailAndPassword(auth, email, password);
-        showModal("Login successful! Redirecting...");
-        setTimeout(() => window.location.href = 'dashboard.html', 1500);
+        const userCredential = await signInWithEmailAndPassword(auth, email, password);
+        const uid = userCredential.user.uid;
+
+        // Get the user's type from the database
+        const userRef = ref(db, 'users/' + uid);
+        const snapshot = await get(userRef);
+
+        if (snapshot.exists()) {
+          const userData = snapshot.val();
+          const type = userData.type || 'user';
+
+          showModal("Login successful! Redirecting...");
+          setTimeout(() => {
+            if (type === 'admin') {
+              window.location.href = 'admin.html';
+            } else {
+              window.location.href = 'dashboard.html';
+            }
+          }, 1500);
+        } else {
+          showModal("User data not found. Please contact support.");
+        }
       } catch (err) {
         if (err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password') {
           showModal("Invalid email or password.");
